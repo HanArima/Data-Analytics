@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import RobustScaler
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score, davies_bouldin_score
 from sklearn.decomposition import PCA
@@ -21,8 +21,77 @@ df['time'] = df['status_published'].dt.time
 df['hour_of_day'] = df['status_published'].dt.hour
 
 def main():
-    kmeansclustering()
+    preprocessed_df = data_preprocessing(df)
+    #find_value_of_k_scaling(preprocessed_df)
+    kmeansclustering(preprocessed_df)
 
+
+def detect_and_count_outliers(df, threshold=1.5): # you can change the threshold
+
+    outlier_counts = {}  # Store outlier counts for each column
+    for col in df.columns:
+        Q1 = df[col].quantile(0.25)
+        Q3 = df[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - threshold * IQR
+        upper_bound = Q3 + threshold * IQR
+        outliers = df[(df[col] < lower_bound) | (df[col] > upper_bound)][col]
+        
+        # Calculate number of outliers
+        num_outliers = len(outliers)
+        outlier_counts[col] = num_outliers
+
+        # Calculate percentage of outliers
+        percentage_outliers = (num_outliers / len(df)) * 100
+        print(f"Column {col}: {percentage_outliers:.2f}% outliers")
+
+    return outlier_counts
+
+def data_preprocessing(df):
+    # Converting the status type from float to Categorical Data
+    categorical_df = pd.DataFrame({'status_type': pd.Categorical(df['status_type']).codes})
+
+    # Selecting features for scaling
+    features = df.drop(['status_type','status_published', 'date', 'time', 'year', 'month', 'hour_of_day', 'status_id'], axis=1)
+
+    # Apply log transformation: To handle the skewness of data
+    features[['num_reactions', 'num_comments', 'num_shares', 'num_likes', 'num_loves', 'num_wows', 'num_hahas', 'num_sads', 'num_angrys']] = np.log1p(features[['num_reactions', 'num_comments', 'num_shares', 'num_likes', 'num_loves', 'num_wows', 'num_hahas', 'num_sads', 'num_angrys']])
+    
+    # Robust Scaling
+    scaler = RobustScaler()
+    scaled_features = scaler.fit_transform(features)
+    
+    # Transforming Scaled features to Data Frame
+    scaled_df = pd.DataFrame(scaled_features, columns=features.columns)
+    scaled_df = pd.concat([scaled_df, categorical_df], axis=1)
+
+
+    ''' Stuff for outlier visualization '''
+    # Create a list of features to be considered.
+    features_considered = scaled_df[['num_reactions', 'num_comments' ,'num_shares' ,'num_likes' ,'num_loves' ,'num_wows' ,'num_hahas' ,'num_sads' ,'num_angrys']]
+    
+    # Melt the DataFrame into long format
+    melted_df = features_considered.melt(var_name='Feature', value_name='Value')
+
+    # Create the boxplot
+    plt.figure(figsize=(100, 15)) # Adjust figure size as needed
+    sns.violinplot(x='Feature', y='Value', data=melted_df, palette='muted')
+    sns.boxplot(x='Feature', y='Value', data=melted_df, width=0.2)
+    plt.title("Overlay of Boxplot and Violinplot for All Features")
+    plt.xlabel("Features")
+    plt.ylabel("Values")
+    #plt.yscale('log')
+    plt.grid(axis='y', linestyle='--', alpha=0.7)
+    plt.xticks(rotation=45) # Rotate x-axis labels for better readability
+    #plt.tight_layout()
+    plt.show()
+
+    '''Returning count of the outlier'''
+    count = detect_and_count_outliers(scaled_df)
+    print(count)
+
+    return scaled_df
+        
 def avg():
     average_values = df.groupby('status_type')[['num_reactions', 'num_comments', 'num_shares']].mean()
     print(average_values)
@@ -38,38 +107,7 @@ def count_of_diff_post():
 def display_table(df):
     print(df.head(10))
 
-def find_value_of_k():
-    # Converting the status type from float to Categorical Data
-    df['status_type'] = pd.Categorical(df['status_type']).codes
-    # Selecting features for clustering
-    features = df.drop(['status_type','status_published', 'date', 'time', 'year', 'month', 'hour_of_day', 'status_id'], axis=1)
-    display_table(features)
-    
-    # Elbow Method
-    wcss = []
-    for i in range(1, 11):
-        kmeans = KMeans(n_clusters=i, init='k-means++', random_state=42)
-        kmeans.fit(features)
-        wcss.append(kmeans.inertia_)
-    
-    plt.figure(figsize=(10,5))
-    sns.lineplot(x=range(1,11), y=wcss, marker='o')
-    plt.title('Elbow Method')
-    plt.xlabel('Number of Clusters')
-    plt.ylabel('WCSS')
-    plt.show()
-
-def find_value_of_k_scaling():
-    # Converting the status type from float to Categorical Data
-    df['status_type'] = pd.Categorical(df['status_type']).codes
-    # Selecting features for clustering
-    features = df.drop(['status_type','status_published', 'date', 'time', 'year', 'month', 'hour_of_day', 'status_id'], axis=1)
-    # Scaling the features
-    scal = StandardScaler()
-    scaled_features = scal.fit_transform(features)
-    # Display the first few rows of the scaled features
-    scaled_df = pd.DataFrame(scaled_features, columns=features.columns)
-    display_table(scaled_df)
+def find_value_of_k_scaling(scaled_df):
     
     ''' Elbow Method '''
     wcss = []
@@ -116,27 +154,15 @@ def find_value_of_k_scaling():
     plt.ylabel('Davies-Bouldin Index Score')
     plt.show()
 
-def kmeansclustering():
-    # WE WILL TRAIN FOR K VALUE 2,5 AND 7
-    df['status_type'] = pd.Categorical(df['status_type']).codes
-
-    features = df.drop(['status_type','status_published', 'date', 'time', 'year', 'month', 'hour_of_day', 'status_id'], axis=1)
-
-    scal = StandardScaler()
-    scaled_features = scal.fit_transform(features)
-
-    scaled_df = pd.DataFrame(scaled_features, index=features.index, columns=features.columns)  # Important: Keep index!
-
-    #  Combine Encoded Categorical and Scaled Numerical Features
-    combined_df = pd.concat([scaled_df, df['status_type']], axis=1)
+def kmeansclustering(scaled_df):
 
     # Training Model
-    for k in [2,5,7]:
+    for k in [2]:
         kmeans_model = KMeans(n_clusters=k, init='k-means++', random_state=53)
         
         # Perform PCA to reduce dimensions to 2
         pca = PCA(n_components=2)
-        pca_features = pca.fit_transform(combined_df)
+        pca_features = pca.fit_transform(scaled_df)
         
         y_kmeans = kmeans_model.fit_predict(pca_features)
         print(f"Silhoutte score for k value {k} is ", silhouette_score(pca_features, y_kmeans))
