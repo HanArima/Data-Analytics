@@ -15,7 +15,17 @@ plt.rcParams['ytick.labelsize'] = 12
 plt.rcParams['legend.fontsize'] = 12
 
 def main():
-    visualization()
+    likelihood_percentage()
+
+def likelihood_percentage():
+    # CONTACT
+
+    grouped_counts = df.groupby('y')['contact'].value_counts()
+    print(grouped_counts)
+    percentages = grouped_counts.groupby(level=0).apply(lambda x: 100 * x / x.sum())
+    print(percentages)
+
+
 
 def visualization():
 
